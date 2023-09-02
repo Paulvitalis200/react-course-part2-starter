@@ -3,28 +3,37 @@ import axios from "axios";
 import { useRef } from "react";
 import { Todo } from "./hooks/useTodos";
 
+interface AddTodoContext {
+  previousTodos: Todo[];
+}
 const TodoForm = () => {
   const queryClient = useQueryClient(); // This  is for the invalidation we will need
-  const addTodo = useMutation<Todo, Error, Todo>({
+  const addTodo = useMutation<Todo, Error, Todo, AddTodoContext>({
     mutationFn: (todo: Todo) =>
       axios
-        .post<Todo>("https://jsonplaceholder.typicode.com/todos", todo)
+        .post<Todo>("https://jsonplaceholder.typicode.com/toos", todo)
         .then((res) => res.data),
-    onSuccess: (savedTodo, newTodo) => {
-      console.log(savedTodo);
-      // APPROACH: Invalidating the cache
-      // Get access to query  client first
-      queryClient.invalidateQueries({
-        queryKey: ["todos"],
-      });
-
-      //APPROACH 2:  Upddating the data in the cache
+    onMutate: (newTodo: Todo) => {
+      const previousTodos = queryClient.getQueryData<Todo[]>(["todos"]) || [];
       queryClient.setQueryData<Todo[]>(["todos"], (todos) => [
-        savedTodo,
+        newTodo,
         ...(todos || []),
       ]);
 
       if (ref.current) ref.current.value = "";
+      return { previousTodos };
+    },
+    onSuccess: (savedTodo, newTodo) => {
+      console.log(savedTodo);
+      queryClient.setQueryData<Todo[]>(["todos"], (todos) =>
+        todos?.map((todo) => (todo === newTodo ? savedTodo : todo))
+      );
+    },
+
+    onError: (error, newTodo, context) => {
+      if (!context) return;
+
+      queryClient.setQueryData<Todo[]>(["todo"], context.previousTodos);
     },
   });
   const ref = useRef<HTMLInputElement>(null);
